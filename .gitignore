@@ -1,0 +1,41 @@
+# Python virtual environment
+backend/venv/
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Local Database & Dynamic Uploads
+backend/spendsnap.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Node modules & Expo build directories
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+
+# Mobile local environment/logs
+mobile/npm-debug.log*
+mobile/yarn-debug.log*
+mobile/yarn-error.log*
+
+# Environment Secrets
+.env
+*.env
+backend/.env
+mobile/.env
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+Thumbs.db
+.DS_Store
