@@ -2,7 +2,7 @@
 
 This is the codebase for **SpendSnap AI (Your Financial Memory)**.
 
-## Month 1 Scope: Dumb but Working
+## Month 1 Scope: 
 - End-to-end pipeline: **Image Selection → OCR Parsing → Extracted Details → Database Persistence**.
 - **Browser Dashboard UI**: Served directly from the backend to verify and test locally without emulator setup.
 - **Mobile Expo App**: Camera receipt scanning, verification, and history card list.
