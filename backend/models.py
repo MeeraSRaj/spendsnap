@@ -20,10 +20,26 @@ class Expense(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     receipt_id = Column(Integer, ForeignKey("receipts.id", ondelete="CASCADE"), nullable=True)
+
+    # Core parsed fields
     merchant = Column(String, nullable=False, index=True)
     amount = Column(Float, nullable=False)
     category = Column(String, default="Uncategorized", nullable=False)
-    transaction_date = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Actual date from the receipt/SMS (not upload time)
+    transaction_date = Column(DateTime(timezone=True), nullable=True)
+
+    # Input source — lets users trace back to the original artefact
+    # Values: "photo" | "screenshot" | "pdf" | "sms"
+    source_type = Column(String, default="photo", nullable=False)
+
+    # AI categorisation fields (populated in Phase 3 when Claude is integrated)
+    ai_suggested_category = Column(String, nullable=True)
+    category_confidence = Column(Float, nullable=True)  # 0.0–1.0
+
+    # User isolation stub — nullable until auth is wired up in Phase 2
+    user_id = Column(String, nullable=True, index=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationship to receipt

@@ -1,0 +1,80 @@
+{
+  "_comment": "Indian merchant → category lookup. Used by the AI categorisation layer (Phase 3). Add new entries as you encounter them. Keys are lowercase for case-insensitive matching.",
+
+  "food_dining": [
+    "swiggy", "zomato", "bundl technologies", "eternal limited",
+    "a2b", "adyar ananda bhavan", "saravana bhavan", "amma mess",
+    "tata starbucks", "starbucks", "cafe coffee day", "ccd",
+    "mcdonalds", "mcdonald's", "burger king", "kfc",
+    "dominos", "domino's", "pizza hut",
+    "barbeque nation", "paradise biryani", "behrouz biryani",
+    "haldirams", "haldiram's", "bikaner", "chitale",
+    "campus foods", "canteen"
+  ],
+
+  "groceries": [
+    "bigbasket", "blinkit", "zepto", "dunzo",
+    "dmart", "avenue supermarts", "reliance fresh", "reliance smart",
+    "more supermarket", "spencers", "star bazaar",
+    "nilgiris", "lulu hypermarket", "metro cash and carry",
+    "nature's basket", "food hall"
+  ],
+
+  "fuel": [
+    "indian oil", "indianoil", "iocl",
+    "bharat petroleum", "bpcl", "hp petrol", "hindustan petroleum", "hpcl",
+    "shell", "essar oil", "reliance petroleum",
+    "nayara energy", "coco"
+  ],
+
+  "transport": [
+    "uber", "ola", "rapido", "meru cabs",
+    "indian railways", "irctc", "make my trip", "easemytrip",
+    "redbus", "abhibus",
+    "metro rail", "dmrc", "bmrc", "cmrl",
+    "fastag", "national highway", "nhai"
+  ],
+
+  "shopping": [
+    "amazon", "amazon seller services", "flipkart",
+    "myntra", "ajio", "nykaa", "meesho",
+    "reliance retail", "reliance digital", "croma", "vijay sales",
+    "max fashion", "westside", "pantaloons", "shoppers stop",
+    "lifestyle stores", "central"
+  ],
+
+  "health": [
+    "apollo pharmacy", "medplus", "netmeds", "1mg", "pharmeasy",
+    "fortis", "apollo hospitals", "manipal hospitals", "narayana health",
+    "practo", "lenskart", "himalaya drug"
+  ],
+
+  "utilities": [
+    "airtel", "vi", "vodafone idea", "jio", "reliance jio",
+    "bsnl", "tata teleservices",
+    "bescom", "msedcl", "tata power", "adani electricity",
+    "mahanagar gas", "indraprastha gas", "gujarat gas",
+    "paytm postpaid", "paytm"
+  ],
+
+  "entertainment": [
+    "pvr", "inox", "cinepolis", "miraj cinemas",
+    "bookmyshow", "district",
+    "netflix", "amazon prime", "hotstar", "disney+ hotstar",
+    "sony liv", "zee5", "jiocinema"
+  ],
+
+  "education": [
+    "byju's", "byjus", "unacademy", "vedantu",
+    "coursera", "udemy",
+    "amazon kindle", "notion press"
+  ],
+
+  "finance": [
+    "hdfc bank", "icici bank", "sbi", "state bank of india",
+    "axis bank", "kotak mahindra", "yes bank", "indusind bank",
+    "emi", "loan repayment", "insurance premium",
+    "lic", "star health", "hdfc life", "sbi life",
+    "zerodha", "groww", "upstox", "angel one"
+  ]
+}

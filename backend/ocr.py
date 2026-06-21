@@ -1,10 +1,15 @@
 import re
 import logging
-from typing import Tuple, Dict, Any, Optional
-from google.cloud import vision
+from datetime import datetime
+from typing import Dict, Any, Optional
 from backend.config import settings
 
 logger = logging.getLogger("spendsnap.ocr")
+
+
+# ──────────────────────────────────────────────────────────────
+# OCR — Google Cloud Vision + Mock fallback
+# ──────────────────────────────────────────────────────────────
 
 def perform_ocr(image_bytes: bytes, filename: Optional[str] = None) -> str:
     """
@@ -14,14 +19,15 @@ def perform_ocr(image_bytes: bytes, filename: Optional[str] = None) -> str:
     """
     if not settings.use_mock_ocr:
         try:
+            from google.cloud import vision  # lazy import — not required in mock mode
             logger.info("Using Google Cloud Vision API for OCR...")
             client = vision.ImageAnnotatorClient()
             image = vision.Image(content=image_bytes)
             response = client.text_detection(image=image)
-            
+
             if response.error.message:
                 raise Exception(f"Google Cloud Vision API Error: {response.error.message}")
-                
+
             texts = response.text_annotations
             if texts:
                 return texts[0].description
@@ -29,11 +35,11 @@ def perform_ocr(image_bytes: bytes, filename: Optional[str] = None) -> str:
         except Exception as e:
             logger.error(f"Failed to run Google Cloud Vision OCR: {e}. Falling back to Mock OCR.")
             # Fall through to mock OCR if API call fails
-            
-    # Mock OCR generator
+
+    # ── Mock OCR generator ──────────────────────────────────────
     logger.info("Using Mock OCR engine...")
     fn = (filename or "").lower()
-    
+
     if "swiggy" in fn or "food" in fn:
         return (
             "Bundl Technologies Private Ltd\n"
@@ -114,7 +120,6 @@ def perform_ocr(image_bytes: bytes, filename: Optional[str] = None) -> str:
             "Paid via GPay (UPI)"
         )
     else:
-        # Default receipt template
         return (
             "A2B VEG RESTAURANT\n"
             "Adyar Ananda Bhavan - Bangalore\n"
@@ -133,42 +138,125 @@ def perform_ocr(image_bytes: bytes, filename: Optional[str] = None) -> str:
         )
 
 
+# ──────────────────────────────────────────────────────────────
+# PDF text extraction (pdfplumber → Vision API fallback)
+# ──────────────────────────────────────────────────────────────
+
+def extract_pdf_text(pdf_bytes: bytes, filename: Optional[str] = None) -> str:
+    """
+    Extracts text from a PDF using pdfplumber (machine-readable PDFs).
+    If pdfplumber returns no text (scanned PDF), falls back to Google Vision
+    on the rendered first-page image.
+    """
+    try:
+        import pdfplumber
+        from io import BytesIO
+
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            pages_text = [page.extract_text() or "" for page in pdf.pages]
+        extracted = "\n".join(pages_text).strip()
+
+        if extracted:
+            logger.info(f"pdfplumber extracted {len(extracted)} chars from PDF.")
+            return extracted
+
+        logger.warning("pdfplumber returned no text — PDF may be scanned. Falling back to Vision API on page image.")
+    except ImportError:
+        logger.warning("pdfplumber not installed. Install it with: pip install pdfplumber>=0.11.0")
+    except Exception as e:
+        logger.error(f"pdfplumber failed: {e}")
+
+    # Fallback: render first page as image and run OCR
+    try:
+        import fitz  # PyMuPDF
+        from io import BytesIO
+
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        page = doc.load_page(0)
+        pix = page.get_pixmap(dpi=200)
+        img_bytes = pix.tobytes("png")
+        logger.info("Rendered PDF page to image — running OCR via Vision API.")
+        return perform_ocr(img_bytes, filename=filename)
+    except ImportError:
+        logger.warning("PyMuPDF (fitz) not installed. Cannot render scanned PDF pages.")
+    except Exception as e:
+        logger.error(f"PDF page rendering failed: {e}")
+
+    return ""
+
+
+# ──────────────────────────────────────────────────────────────
+# Receipt text parser
+# ──────────────────────────────────────────────────────────────
+
+# Date patterns used across Indian receipts and bank statements
+_DATE_PATTERNS = [
+    # "Date: 20-06-2026" / "Date: 20/06/2026"
+    r'(?:date|dated?)[:\s]+(\d{1,2}[-/]\d{1,2}[-/]\d{4})',
+    # "Order Date: 15-06-2026"
+    r'(?:order|transaction|txn|invoice)[:\s]+date[:\s]+(\d{1,2}[-/]\d{1,2}[-/]\d{4})',
+    # Standalone DD-MM-YYYY or DD/MM/YYYY at word boundary
+    r'\b(\d{2}[-/]\d{2}[-/]\d{4})\b',
+    # YYYY-MM-DD (ISO)
+    r'\b(\d{4}[-/]\d{2}[-/]\d{2})\b',
+]
+
+# Formats tried when parsing extracted date strings
+_DATE_FORMATS = [
+    "%d-%m-%Y",
+    "%d/%m/%Y",
+    "%Y-%m-%d",
+    "%Y/%m/%d",
+    "%d-%m-%Y %H:%M:%S",
+    "%d/%m/%Y %H:%M:%S",
+]
+
+
+def _parse_date_string(raw: str) -> Optional[datetime]:
+    """Try multiple formats to parse a raw date string into a datetime object."""
+    raw = raw.strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    return None
+
+
 def parse_receipt_text(text: str) -> Dict[str, Any]:
     """
-    Parses the raw text extracted from a receipt to find the merchant name and total amount.
-    Returns a dictionary with 'merchant', 'amount', and 'transaction_date'.
+    Parses raw OCR text from a receipt to extract:
+      - merchant  (str)
+      - amount    (float)
+      - transaction_date (datetime | None)
+
+    Returns a dict ready to be unpacked into an Expense row.
     """
-    # 1. Split text into lines for line-by-line inspection
     lines = [line.strip() for line in text.split("\n") if line.strip()]
-    
+
+    # ── 1. Merchant ──────────────────────────────────────────
     merchant = "Unknown Merchant"
-    amount = 0.0
-    
-    # 2. Extract Merchant (typically the first non-empty line of the receipt)
     if lines:
         merchant = lines[0]
-        # Clean up common headers if they appear as merchant
-        if len(merchant) < 3 or merchant.lower() in ["tax invoice", "bill of supply", "invoice", "receipt", "welcome"]:
+        # Skip generic header lines and very short strings
+        noise = {"tax invoice", "bill of supply", "invoice", "receipt", "welcome", "gstin"}
+        if len(merchant) < 3 or merchant.lower() in noise:
             if len(lines) > 1:
                 merchant = lines[1]
-                
-    # 3. Extract Amount
-    # Look for common monetary patterns. In India, formatting uses "Rs.", "Rs", "INR", "Total", "Grand Total", "Total Due", "Amount Paid"
-    # Matches patterns like: "Total: Rs. 349.00", "Total Due: 236.26", "INR 798.00", "Amount Received: Rs 2000.00"
+
+    # ── 2. Amount ────────────────────────────────────────────
     amount_patterns = [
         r"(?:grand\s+)?total(?:\s+due)?(?:\s+amount)?[\s\:\-]*\s*(?:inr|rs\.?|rupees)?\s*([\d\.,]+)",
-        r"(?:amount|total\s+paid|paid\s+amount)[\s\:\-]*\s*(?:inr|rs\.?|rupees)?\s*([\d\.,]+)",
+        r"(?:amount|total\s+paid|paid\s+amount|amount\s+received)[\s\:\-]*\s*(?:inr|rs\.?|rupees)?\s*([\d\.,]+)",
         r"(?:inr|rs\.?)\s*([\d\.,]+)",
         r"due[\s\:\-]*\s*(?:inr|rs\.?|rupees)?\s*([\d\.,]+)",
     ]
-    
-    found_amount = None
+
+    found_amount: Optional[float] = None
     for pattern in amount_patterns:
         matches = re.findall(pattern, text, re.IGNORECASE)
         if matches:
-            # We look for the last match of 'total' as it's typically the final sum
             for match in reversed(matches):
-                # Clean up commas and dots (e.g. 2,000.00 -> 2000.00)
                 cleaned = match.replace(",", "")
                 try:
                     val = float(cleaned)
@@ -179,10 +267,9 @@ def parse_receipt_text(text: str) -> Dict[str, Any]:
                     continue
         if found_amount is not None:
             break
-            
-    # If no pattern matched, scan all numbers and take the maximum number that appears near the bottom
+
+    # Fallback: take the largest decimal number on the receipt
     if found_amount is None:
-        # Regex to find all floating point or decimal numbers (excluding common date/id formats)
         numbers = re.findall(r'\b\d+\.\d{2}\b', text)
         floats = []
         for num in numbers:
@@ -191,13 +278,29 @@ def parse_receipt_text(text: str) -> Dict[str, Any]:
             except ValueError:
                 continue
         if floats:
-            # Usually the total is the largest number on the receipt
             found_amount = max(floats)
-            
-    if found_amount is not None:
-        amount = found_amount
-        
+
+    amount = found_amount if found_amount is not None else 0.0
+
+    # ── 3. Transaction Date ───────────────────────────────────
+    transaction_date: Optional[datetime] = None
+    for pattern in _DATE_PATTERNS:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        for raw_date in matches:
+            parsed = _parse_date_string(raw_date)
+            if parsed:
+                transaction_date = parsed
+                break
+        if transaction_date:
+            break
+
+    if transaction_date:
+        logger.debug(f"Extracted transaction_date: {transaction_date}")
+    else:
+        logger.debug("No date found in OCR text — transaction_date will be None.")
+
     return {
         "merchant": merchant,
-        "amount": amount
+        "amount": amount,
+        "transaction_date": transaction_date,
     }
