@@ -119,6 +119,10 @@ def perform_ocr(image_bytes: bytes, filename: Optional[str] = None) -> str:
             "Total: Rs 45.00\n"
             "Paid via GPay (UPI)"
         )
+    elif "sms" in fn:
+        return (
+            "Alert: Rs 450.00 spent on HDFC Bank Card... at STARBUCKS on 20-06-2026."
+        )
     else:
         return (
             "A2B VEG RESTAURANT\n"

@@ -23,6 +23,7 @@ SpendSnap turns any receipt photo, UPI screenshot, or bank PDF into a searchable
 | 📷 Receipt photo | OCR + regex parsing | `{ merchant, amount, date, category, source_type }` |
 | 🖼️ UPI/bank screenshot | Filename heuristic + OCR | Labelled `source_type: "screenshot"` |
 | 📄 PDF bank statement | pdfplumber → Vision fallback | Full transaction history |
+| 💬 Bank SMS text | Regex + normalisation | `{ merchant, amount, date, category, source_type: "sms" }` |
 
 > **Current Phase:** Month 1 core pipeline — input → OCR/PDF extraction → parsed JSON → database.
 
@@ -44,6 +45,7 @@ spendsnap/
 │   ├── index.html                    # Browser dashboard (served at /)
 │   ├── test_pipeline.py              # Integration test suite
 │   ├── requirements.txt
+│   ├── sms_parsers/                  # Bank SMS normalisation (HDFC, ICICI, SBI, Paytm)
 │   └── data/
 │       └── merchants.json            # Indian merchant → category lookup (Phase 3)
 │
@@ -176,6 +178,7 @@ CORS_ORIGINS=["https://app.yourdomain.com","http://localhost:8081"]
 | `GET` | `/` | Browser dashboard UI |
 | `GET` | `/api/health` | Server status, OCR mode, upload limit |
 | `POST` | `/api/upload` | Upload image or PDF → returns parsed expense |
+| `POST` | `/api/expenses/sms` | Parse bank SMS text → returns parsed expense |
 | `GET` | `/api/expenses` | All expenses, ordered by receipt date |
 | `PUT` | `/api/expenses/{id}` | Correct any field (merchant, amount, category, source_type) |
 | `DELETE` | `/api/expenses/{id}` | Remove expense + deletes image file from disk |
@@ -242,7 +245,7 @@ CORS_ORIGINS=["https://app.yourdomain.com","http://localhost:8081"]
 - [ ] Upload progress bar + offline queue for slow connections
 - [ ] Auth via Supabase — wire `user_id` to expense rows
 - [ ] Supabase Storage for receipt images (replace local `file_path`)
-- [ ] Bank SMS normalisation layer (`sms_parsers/hdfc.py`, `sms_parsers/icici.py`, …)
+- [x] Bank SMS normalisation layer (`sms_parsers/hdfc.py`, `sms_parsers/icici.py`, …)
 
 ---
 

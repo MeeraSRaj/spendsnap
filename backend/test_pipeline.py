@@ -82,6 +82,7 @@ def run_test():
     r = requests.post(
         f"{BASE_URL}/api/upload",
         files={"file": ("swiggy_test_receipt.png", img_data, "image/png")},
+        headers={"X-User-Id": "test_user"},
         timeout=30,
     )
     check(r.status_code == 201, f"HTTP 201 (got {r.status_code}): {r.text[:120]}")
@@ -108,6 +109,7 @@ def run_test():
     r = requests.post(
         f"{BASE_URL}/api/upload",
         files={"file": ("phonepe_screenshot_receipt.png", img_data, "image/png")},
+        headers={"X-User-Id": "test_user"},
         timeout=30,
     )
     check(r.status_code == 201, f"HTTP 201 (got {r.status_code})")
@@ -118,7 +120,7 @@ def run_test():
 
     # ── 6. List expenses ─────────────────────────────────────
     step(6, "List all expenses")
-    r = requests.get(f"{BASE_URL}/api/expenses", timeout=10)
+    r = requests.get(f"{BASE_URL}/api/expenses", headers={"X-User-Id": "test_user"}, timeout=10)
     r.raise_for_status()
     expenses = r.json()
     check(len(expenses) >= 2, f"At least 2 expenses in DB (found {len(expenses)})")
@@ -134,7 +136,7 @@ def run_test():
         "category": "Food & Dining",
         "source_type": "screenshot",
     }
-    r = requests.put(f"{BASE_URL}/api/expenses/{expense_id}", json=payload, timeout=10)
+    r = requests.put(f"{BASE_URL}/api/expenses/{expense_id}", json=payload, headers={"X-User-Id": "test_user"}, timeout=10)
     r.raise_for_status()
     updated = r.json()
 
@@ -145,13 +147,105 @@ def run_test():
 
     # ── 8. Delete expense ────────────────────────────────────
     step(8, f"Delete screenshot expense #{screenshot_id}")
-    r = requests.delete(f"{BASE_URL}/api/expenses/{screenshot_id}", timeout=10)
+    r = requests.delete(f"{BASE_URL}/api/expenses/{screenshot_id}", headers={"X-User-Id": "test_user"}, timeout=10)
     check(r.status_code == 204, f"HTTP 204 (got {r.status_code})")
 
     # Verify it's gone
-    r = requests.get(f"{BASE_URL}/api/expenses", timeout=10)
+    r = requests.get(f"{BASE_URL}/api/expenses", headers={"X-User-Id": "test_user"}, timeout=10)
     remaining_ids = [e["id"] for e in r.json()]
     check(screenshot_id not in remaining_ids, f"Expense #{screenshot_id} removed from list")
+
+    # ── 9. User Isolation ────────────────────────────────────
+    step(9, "User Isolation — check cross-user privacy")
+    
+    # User A uploads an expense
+    headers_a = {"X-User-Id": "user_a"}
+    headers_b = {"X-User-Id": "user_b"}
+    
+    img_data = generate_test_image("swiggy")
+    r = requests.post(
+        f"{BASE_URL}/api/upload",
+        files={"file": ("swiggy_user_a.png", img_data, "image/png")},
+        headers=headers_a,
+        timeout=15
+    )
+    check(r.status_code == 201, "User A upload succeeded")
+    expense_a = r.json()["expense"]
+    expense_a_id = expense_a["id"]
+    
+    # User B lists expenses - should NOT see User A's expense
+    r = requests.get(f"{BASE_URL}/api/expenses", headers=headers_b, timeout=10)
+    expenses_b = r.json()
+    b_ids = [e["id"] for e in expenses_b]
+    check(expense_a_id not in b_ids, "User B cannot view User A's expense")
+    
+    # User B tries to delete User A's expense - should return 403 Forbidden
+    r = requests.delete(f"{BASE_URL}/api/expenses/{expense_a_id}", headers=headers_b, timeout=10)
+    check(r.status_code == 403, f"User B delete of User A's expense rejected with HTTP 403 (got {r.status_code})")
+    
+    # Clean up User A's expense
+    r = requests.delete(f"{BASE_URL}/api/expenses/{expense_a_id}", headers=headers_a, timeout=10)
+    check(r.status_code == 204, "User A cleaned up their expense")
+
+    # ── 10. SMS Copy-Paste Normalisation ─────────────────────
+    step(10, "SMS Copy-Paste parsing engine")
+    
+    sms_test_cases = [
+        {
+            "sms": "Alert: Rs 1,450.00 spent on HDFC Bank Card... at ZOMATO on 20-06-2026.",
+            "merchant": "ZOMATO",
+            "amount": 1450.00
+        },
+        {
+            "sms": "Dear Customer, txn of INR 320.00 on ICICI Bank Card ...8920 at STARBUCKS on 20-Jun-2026",
+            "merchant": "STARBUCKS",
+            "amount": 320.00
+        },
+        {
+            "sms": "Txn of Rs 500.00 on SBI Debit Card ...1234 at INDIANOIL on 20-06-2026",
+            "merchant": "INDIANOIL",
+            "amount": 500.00
+        },
+        {
+            "sms": "Paid Rs. 350.00 to SWIGGY. Wallet Bal: Rs 120. TxnId: 102938",
+            "merchant": "SWIGGY",
+            "amount": 350.00
+        }
+    ]
+    
+    for i, tc in enumerate(sms_test_cases, 1):
+        r = requests.post(
+            f"{BASE_URL}/api/expenses/sms",
+            json={"sms_text": tc["sms"]},
+            headers={"X-User-Id": "sms_test_user"},
+            timeout=10
+        )
+        check(r.status_code == 201, f"SMS test case {i} created successfully")
+        exp = r.json()
+        check(exp["amount"] == tc["amount"], f"Case {i} amount match: expected {tc['amount']}, got {exp['amount']}")
+        check(exp["merchant"].upper() == tc["merchant"].upper(), f"Case {i} merchant match: expected {tc['merchant']}, got {exp['merchant']}")
+        check(exp["source_type"] == "sms", f"Case {i} source_type='sms'")
+        
+        # Clean up
+        requests.delete(f"{BASE_URL}/api/expenses/{exp['id']}", headers={"X-User-Id": "sms_test_user"}, timeout=10)
+
+    # ── 11. SMS Screenshot OCR normalisation ──────────────────
+    step(11, "SMS Screenshot OCR automatic detection")
+    img_data = generate_test_image("sms")  # Name contains 'sms' to trigger HDFC SMS template
+    r = requests.post(
+        f"{BASE_URL}/api/upload",
+        files={"file": ("screenshot_sms.png", img_data, "image/png")},
+        headers={"X-User-Id": "sms_screenshot_user"},
+        timeout=20
+    )
+    check(r.status_code == 201, "SMS screenshot upload processed successfully")
+    sms_exp = r.json()["expense"]
+    check(sms_exp["source_type"] == "sms", f"Expected source_type='sms' from screenshot, got {sms_exp['source_type']}")
+    check(sms_exp["merchant"].upper() == "STARBUCKS", f"Expected merchant='STARBUCKS', got {sms_exp['merchant']}")
+    check(sms_exp["amount"] == 450.00, f"Expected amount=450.00, got {sms_exp['amount']}")
+    
+    # Clean up
+    requests.delete(f"{BASE_URL}/api/expenses/{sms_exp['id']}", headers={"X-User-Id": "sms_screenshot_user"}, timeout=10)
 
     print("\n" + "=" * 55)
     print(f"  {PASS} All integration tests passed!")

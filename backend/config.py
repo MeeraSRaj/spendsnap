@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     # Maximum allowed upload size in megabytes.
     MAX_UPLOAD_SIZE_MB: int = 10
 
+    # ── Supabase Integration ──────────────────────────────────
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_ANON_KEY: Optional[str] = None
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    SUPABASE_STORAGE_BUCKET: str = "receipts"
+    # Can be overridden in .env. If None, it will dynamically evaluate based on keys.
+    USE_MOCK_AUTH: Optional[bool] = None
+
     # ── CORS ──────────────────────────────────────────────────
     # In development this is open. In production, restrict to your domain(s):
     # CORS_ORIGINS=["https://app.spendsnap.in"]
@@ -41,6 +49,16 @@ class Settings(BaseSettings):
     def use_mock_ocr(self) -> bool:
         # If credentials aren't set, use mock OCR for development/testing
         return not self.GOOGLE_APPLICATION_CREDENTIALS
+
+    @property
+    def use_mock_auth(self) -> bool:
+        if self.USE_MOCK_AUTH is not None:
+            return self.USE_MOCK_AUTH
+        return not (self.SUPABASE_URL and self.SUPABASE_ANON_KEY)
+
+    @property
+    def use_mock_storage(self) -> bool:
+        return not (self.SUPABASE_URL and self.SUPABASE_SERVICE_ROLE_KEY)
 
     @property
     def BASE_DIR(self) -> Path:

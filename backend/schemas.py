@@ -59,3 +59,11 @@ class ReceiptResponse(BaseModel):
 class UploadResponse(BaseModel):
     receipt: ReceiptResponse
     expense: ExpenseResponse
+
+
+# ──────────────────────────────────────────────
+# SMS parsing request schema
+# ──────────────────────────────────────────────
+
+class SMSPayload(BaseModel):
+    sms_text: str
